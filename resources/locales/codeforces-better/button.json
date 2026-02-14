@@ -48,5 +48,9 @@
         "404": "未找到",
         "error": "出错了",
         "netError": "网络错误"
+    },
+    "nav": {
+        "toProblemset": "To Problemset",
+        "toContest": "To Contest"
     }
 }

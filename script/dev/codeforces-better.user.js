@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Codeforces Better!
 // @namespace    https://greasyfork.org/users/747162
-// @version      1.82.0
+// @version      1.83.0
 // @author       北极小狐
 // @match        *://*.codeforces.com/*
 // @match        *://*.codeforc.es/*
@@ -156,6 +156,8 @@ OJBetter.basic = {
   standingsRecolor: undefined,
   /** @type {boolean?} 隐藏题目问题标签 */
   hiddenProblemTag: undefined,
+  /** @type {boolean?} Contest和Problemset页面互相跳转 */
+  contestProblemSwitch: undefined,
 };
 
 /**
@@ -172,8 +174,10 @@ OJBetter.typeOfPage = {
   is_acmsguru: undefined,
   /** @type {boolean?} 是否是旧版LaTeX页面 */
   is_oldLatex: undefined,
-  /** @type {boolean?} 是否是题目集页面 */
+  /** @type {boolean?} 是否是题目集/比赛的外部页面 */
   is_contest: undefined,
+  /** @type {boolean?} 是否是题目集/比赛里面的题目页面 */
+  is_contest_problem: undefined,
   /** @type {boolean?} 是否是题目页面 */
   is_problem: undefined,
   /** @type {boolean?} 是否是完整的问题集页面 */
@@ -961,6 +965,9 @@ async function initVar() {
     href.includes("acmsguru") && href.includes("/problem/");
   OJBetter.typeOfPage.is_contest =
     /\/contest\/[\d\/\s]+$/.test(href) && !href.includes("/problem/");
+    //测试通过https://mirror.codeforces.com/contest/2197/problem/B 这种
+  OJBetter.typeOfPage.is_contest_problem =
+    location.pathname.startsWith('/contest/') && href.includes("/problem/");
   OJBetter.typeOfPage.is_problem = href.includes("/problem/");
   OJBetter.typeOfPage.is_completeProblemset = /problems\/?$/.test(href);
   OJBetter.typeOfPage.is_problemset_problem =
@@ -996,6 +1003,7 @@ async function initVar() {
   OJBetter.basic.showCF2vjudge = OJB_getGMValue("showCF2vjudge", true);
   OJBetter.basic.standingsRecolor = OJB_getGMValue("standingsRecolor", true);
   OJBetter.basic.hiddenProblemTag = OJB_getGMValue("hiddenProblemTag", false);
+  OJBetter.basic.contestProblemSwitch = OJB_getGMValue("contestProblemSwitch", false);
   OJBetter.state.notWaiteLoaded = OJB_getGMValue("notWaiteLoaded", false);
   OJBetter.translation.targetLang = OJB_getGMValue("transTargetLang", "zh");
   OJBetter.translation.choice = OJB_getGMValue("translation", "deepl");
@@ -7237,6 +7245,14 @@ const preference_settings_HTML = `
         <input type="checkbox" id="hiddenProblemTag" name="hiddenProblemTag">
     </div>
     <div class='OJBetter_setting_list'>
+        <label for="contestProblemSwitch" data-i18n="settings:basic.contestProblemSwitch.label"></label>
+        <div class="help_tip">
+            ${helpCircleHTML}
+            <div class="tip_text" data-i18n="[html]settings:basic.contestProblemSwitch.helpText"></div>
+        </div>
+        <input type="checkbox" id="contestProblemSwitch" name="contestProblemSwitch">
+    </div>
+    <div class='OJBetter_setting_list'>
         <label for="showSameContestProblems" data-i18n="settings:preference.showSameContestProblems.label"></label>
         <div class="help_tip">
             ${helpCircleHTML}
@@ -8034,6 +8050,10 @@ async function initSettingsPanel() {
       "checked",
       GM_getValue("hiddenProblemTag") === true
     );
+    $("#contestProblemSwitch").prop(
+      "checked",
+      GM_getValue("contestProblemSwitch") === true
+    );
     $("#showJumpToLuogu").prop(
       "checked",
       GM_getValue("showJumpToLuogu") === true
@@ -8240,6 +8260,7 @@ async function initSettingsPanel() {
         commentPaging: $("#commentPaging").prop("checked"),
         standingsRecolor: $("#standingsRecolor").prop("checked"),
         hiddenProblemTag: $("#hiddenProblemTag").prop("checked"),
+        contestProblemSwitch: $("#contestProblemSwitch").prop("checked"),
         showJumpToLuogu: $("#showJumpToLuogu").prop("checked"),
         showCF2vjudge: $("#showCF2vjudge").prop("checked"),
         showSameContestProblems: $("#showSameContestProblems").prop("checked"),
@@ -12467,6 +12488,75 @@ async function judgeStatusReplace() {
     },
   });
 }
+
+/**
+ * 从contest的题目页面跳转到problemset的题目页面
+ *
+ */
+async function SetRedirectToProblemset() {
+  const match = window.location.href.match(/\/contest\/(\d+)\/problem\/(\w+)/);
+  if (!match) {
+    console.warn(`添加跳转按钮时发现链接不匹配：${window.location.href}`);
+    return;
+  }
+
+  const contestId = match[1];
+  const problemIndex = match[2];
+
+  const ul = document.querySelector('.second-level-menu-list');
+  if (!ul) {
+    console.warn(`添加跳转按钮时发现未找到 .second-level-menu-list 元素`);
+    return;
+  }
+
+  // 防止重复添加
+  if (ul.querySelector('.to-problemset-btn')) return;
+
+  const li = document.createElement('li');
+  li.classList.add('to-problemset-btn');
+
+  const a = document.createElement('a');
+  a.href = `/problemset/problem/${contestId}/${problemIndex}`;
+  a.textContent = i18next.t("nav.toProblemset", { ns: "button" });
+
+  li.appendChild(a);
+  ul.appendChild(li);
+}
+
+/**
+ * 从problemset的题目页面跳转到contest的题目页面
+ *
+ */
+async function SetRedirectToContest() {
+  const match = window.location.href.match(/\/problemset\/problem\/(\d+)\/(\w+)/);
+  if (!match) {
+    console.warn(`添加跳转按钮时发现链接不匹配：${window.location.href}`);
+    return;
+  }
+
+  const contestId = match[1];
+  const problemIndex = match[2];
+
+  const ul = document.querySelector('.second-level-menu-list');
+  if (!ul) {
+    console.warn(`添加跳转按钮时发现未找到 .second-level-menu-list 元素`);
+    return;
+  }
+
+  // 防止重复添加
+  if (ul.querySelector('.to-contest-btn')) return;
+
+  const li = document.createElement('li');
+  li.classList.add('to-contest-btn');
+
+  const a = document.createElement('a');
+  a.href = `/contest/${contestId}/problem/${problemIndex}`;
+  a.textContent = i18next.t("nav.toContest", { ns: "button" });
+
+  li.appendChild(a);
+  ul.appendChild(li);
+}
+
 
 /**
  * 存放编辑器语言select的值与Monaco语言对应关系的map.
@@ -17453,6 +17543,10 @@ function initializeInParallel(loadingMessage) {
   if (OJBetter.translation.comment.transMode == "2") multiChoiceTranslation(); // 选段翻译支持
   if (OJBetter.monaco.beautifyPreBlocks) beautifyPreBlocksWithMonaco(); // 美化Pre代码块
   if (OJBetter.basic.hiddenProblemTag) hiddenProblemTag(); // 隐藏题目问题标签
+  if (OJBetter.basic.contestProblemSwitch) {// 题目互相跳转
+    if (OJBetter.typeOfPage.is_contest_problem) SetRedirectToProblemset();
+    if (OJBetter.typeOfPage.is_problemset_problem) SetRedirectToContest();
+  }
 }
 
 /**
