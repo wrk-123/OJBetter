@@ -965,7 +965,6 @@ async function initVar() {
     href.includes("acmsguru") && href.includes("/problem/");
   OJBetter.typeOfPage.is_contest =
     /\/contest\/[\d\/\s]+$/.test(href) && !href.includes("/problem/");
-    //测试通过https://mirror.codeforces.com/contest/2197/problem/B 这种
   OJBetter.typeOfPage.is_contest_problem =
     location.pathname.startsWith('/contest/') && href.includes("/problem/");
   OJBetter.typeOfPage.is_problem = href.includes("/problem/");
